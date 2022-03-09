@@ -1,0 +1,34 @@
+ninja_required_version = 1.1
+
+# pkg-config --cflags sdl2
+freetype2_cflags = -D_THREAD_SAFE -I/usr/local/include/SDL2
+
+# pkg-config --cflags freetype2
+sdl2_cflags = -I/usr/local/opt/freetype/include/freetype2
+
+ruby_cflags = -I$HOME/.rbenv/versions/3.0.3/include/ruby-3.0.0 -I$HOME/.rbenv/versions/3.0.3/include/ruby-3.0.0/x86_64-darwin20
+
+cairo_cflags = -I/usr/local/include/cairo
+
+deps_cflags = $freetype2_cflags $sdl2_cflags $cairo_cflags $ruby_cflags
+
+# pkg-config --libs cairo sdl2 freetype2
+deps_lflags = -L/usr/local/Cellar/cairo/1.16.0_5/lib -L/usr/local/lib -L/usr/local/opt/freetype/lib -L$HOME/.rbenv/versions/3.0.3/lib -lcairo -lSDL2 -lfreetype -lruby.3.0
+
+ruby_ldflags  = -L/usr/local/opt/mysql-client@5.7/lib -L/usr/local/opt/openssl@1.1/lib -fstack-protector-strong -L/usr/local/lib -Wl,-undefined,dynamic_lookup -Wl,-multiply_defined,suppress
+linker_flags = $deps_lflags $ruby_ldflags
+
+warnflags = -Wall -Wextra -Wdeprecated-declarations -Wdivision-by-zero -Wimplicit-function-declaration -Wimplicit-int -Wmisleading-indentation -Wpointer-arith -Wshorten-64-to-32 -Wwrite-strings -Wmissing-noreturn -Wno-constant-logical-operand -Wno-long-long -Wno-missing-field-initializers -Wno-overlength-strings -Wno-parentheses-equality -Wno-self-assign -Wno-tautological-compare -Wno-unused-parameter -Wno-unused-value -Wunused-variable -Wextra-tokens
+ruby_mkmf_cflags = -fno-common -pipe $warnflags
+cflags = -O0 -g $deps_cflags $ruby_mkmf_cflags
+
+rule cc
+  command = clang -O2 -fdeclspec $cflags -c $in -o $out
+
+rule lcc
+  command = clang -O2 -fdeclspec -dynamic -bundle $cflags $linker_flags $in -o $out
+
+build out/layer_ext.o: cc c_src/layer_ext.c
+build out/window.o: cc c_src/window.c
+build out/surface.o: cc c_src/surface.c
+build lib/ext/layer_ext.bundle: lcc out/layer_ext.o out/window.o out/surface.o

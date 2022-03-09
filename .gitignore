@@ -1,3 +1,6 @@
 
-.ninja_log
+/.ninja_log
+/out
 
+lib/ext/*
+!lib/ext/.keep
