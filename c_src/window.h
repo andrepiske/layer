@@ -13,4 +13,6 @@ struct LAO_Window {
   cairo_surface_t *cairo_surface;
 };
 
+void lao_wnd_handle_event(struct LAO_Window *wnd, SDL_WindowEvent *ev);
+
 #endif

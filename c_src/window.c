@@ -1,4 +1,5 @@
 #include "window.h"
+#include "surface.h"
 #include <string.h>
 
 extern VALUE cLayer;
@@ -8,19 +9,73 @@ VALUE cLayerWindow;
   struct LAO_Window *wnd = (struct LAO_Window*)rb_data_object_get((o))
 
 static void
-t_wnd_gc_mark(struct LAO_Window *dv) {
+t_wnd_gc_mark(struct LAO_Window *wnd) {
 }
 
 static void
-t_wnd_free(struct LAO_Window *dv) {
-  xfree(dv);
+t_wnd_free(struct LAO_Window *wnd) {
+  if (wnd->sdl_surface) {
+    SDL_FreeSurface(wnd->sdl_surface);
+    wnd->sdl_surface = 0;
+  }
+  if (wnd->cairo_surface) {
+    cairo_surface_destroy(wnd->cairo_surface);
+    wnd->cairo_surface = 0;
+  }
+  if (wnd->cairo_ctx) {
+    cairo_destroy(wnd->cairo_ctx);
+    wnd->cairo_ctx = 0;
+  }
+  if (wnd->sdl_wnd) {
+    SDL_DestroyWindow(wnd->sdl_wnd);
+    wnd->sdl_wnd = 0;
+  }
+  xfree(wnd);
 }
 
 static VALUE
 t_wnd_allocator(VALUE klass) {
   struct LAO_Window *wnd = (struct LAO_Window*)xmalloc(sizeof(struct LAO_Window));
   wnd->sdl_wnd = 0;
+  wnd->sdl_surface = 0;
+  wnd->cairo_ctx = 0;
+  wnd->cairo_surface = 0;
   return Data_Wrap_Struct(klass, t_wnd_gc_mark, t_wnd_free, wnd);
+}
+
+void
+reallocate_wnd_buffers(struct LAO_Window *wnd) {
+  if (wnd->cairo_surface) {
+    cairo_surface_destroy(wnd->cairo_surface);
+    wnd->cairo_surface = 0;
+  }
+  if (wnd->cairo_ctx) {
+    cairo_destroy(wnd->cairo_ctx);
+    wnd->cairo_ctx = 0;
+  }
+  if (wnd->sdl_surface) {
+    SDL_FreeSurface(wnd->sdl_surface);
+    wnd->sdl_surface = 0;
+  }
+
+  int width = 0, height = 0;
+  SDL_GetWindowSize(wnd->sdl_wnd, &width, &height);
+
+  SDL_Surface *sfc = SDL_CreateRGBSurfaceWithFormat(0,
+    width, height, 32, SDL_PIXELFORMAT_BGRA32);
+
+  SDL_SetSurfaceBlendMode(sfc, SDL_BLENDMODE_NONE);
+  wnd->sdl_surface = sfc;
+
+  // TODO: check SDL_MUSTLOCK on the image
+  // SDL_LockSurface(sfc);
+  wnd->cairo_surface = cairo_image_surface_create_for_data(
+    sfc->pixels,
+    CAIRO_FORMAT_ARGB32,
+    sfc->w, sfc->h,
+    sfc->pitch);
+
+  wnd->cairo_ctx = cairo_create(wnd->cairo_surface);
 }
 
 static VALUE
@@ -39,23 +94,20 @@ t_wnd_initialize(VALUE self, VALUE _title, VALUE _width, VALUE _height) {
     SDL_WINDOW_RESIZABLE
   );
 
-  SDL_Surface *sfc = SDL_CreateRGBSurfaceWithFormat(0,
-    512, 512, 32, SDL_PIXELFORMAT_BGRA32);
+  SDL_SetWindowData(wnd->sdl_wnd, "L", wnd);
 
-  SDL_SetSurfaceBlendMode(sfc, SDL_BLENDMODE_NONE);
-  wnd->sdl_surface = sfc;
-
-  // TODO: check SDL_MUSTLOCK on the image
-  // SDL_LockSurface(sfc);
-  wnd->cairo_surface = cairo_image_surface_create_for_data(
-    sfc->pixels,
-    CAIRO_FORMAT_ARGB32,
-    sfc->w, sfc->h,
-    sfc->pitch);
-
-  wnd->cairo_ctx = cairo_create(wnd->cairo_surface);
+  reallocate_wnd_buffers(wnd);
 
   return self;
+}
+
+////////////////////////////////////////////////////////////////////////
+
+void
+lao_wnd_handle_event(struct LAO_Window *wnd, SDL_WindowEvent *ev) {
+  if (ev->event == SDL_WINDOWEVENT_RESIZED) {
+    reallocate_wnd_buffers(wnd);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -71,15 +123,73 @@ t_wnd_show(VALUE self) {
 }
 
 static VALUE
-t_wnd_flip_buffers(VALUE self)
-{
+t_wnd_flip_buffers(VALUE self) {
   DECLAREWND(self);
   SDL_Surface *win_sfc = SDL_GetWindowSurface(wnd->sdl_wnd);
 
   SDL_FillRect(win_sfc, 0, SDL_MapRGB(win_sfc->format, 0, 0, 0));
   SDL_BlitSurface(wnd->sdl_surface, 0, win_sfc, 0);
   SDL_UpdateWindowSurface(wnd->sdl_wnd);
+
+  SDL_FillRect(wnd->sdl_surface, 0, 0xFF000000);
+  cairo_identity_matrix(wnd->cairo_ctx);
+
   return self;
+}
+
+static VALUE
+t_wnd_blit_surface(int argc, const VALUE *argv, VALUE self) {
+  DECLAREWND(self);
+
+  VALUE _x;
+  VALUE _y;
+  VALUE _sfc;
+  VALUE _width;
+  VALUE _height;
+
+  rb_scan_args(argc, argv, "32", &_x, &_y, &_sfc, &_width, &_height);
+
+  struct LAO_Surface *sfc = (struct LAO_Surface*)rb_data_object_get((_sfc));
+
+  double x = NUM2DBL(_x);
+  double y = NUM2DBL(_y);
+
+  cairo_t *cr = wnd->cairo_ctx;
+
+  // cairo_set_source_rgba(cr, 0x88 / 255.0, 0xd9 / 255.0, 0xde / 255.0, 1.0); // #88d9de #ded988
+  // cairo_rectangle(cr, (double)x, (double)y, 128.0, 128.0);
+  // cairo_fill(cr);
+
+  if (!sfc->cairo_surface) {
+    return Qfalse;
+  }
+
+  int sfc_width = cairo_image_surface_get_width(sfc->cairo_surface);
+  int sfc_height = cairo_image_surface_get_height(sfc->cairo_surface);
+
+  cairo_matrix_t matrix;
+  if (_width != Qnil && _height != Qnil) {
+    cairo_scale(cr, NUM2DBL(_width) / (double)sfc_width, NUM2DBL(_height) / (double)sfc_height);
+    cairo_get_matrix(cr, &matrix);
+  }
+
+  cairo_set_source_surface(cr,
+    sfc->cairo_surface, x, y
+  );
+  cairo_rectangle(cr, x, y, sfc_width, sfc_height);
+  cairo_fill(cr);
+
+  if (_width != Qnil && _height != Qnil) {
+    cairo_set_matrix(cr, &matrix);
+  }
+
+  return Qtrue;
+}
+
+static VALUE
+t_wnd_to_surface(VALUE self) {
+  DECLAREWND(self);
+  return lao_sfc_create_borrowed(wnd->sdl_surface, wnd->cairo_surface, wnd->cairo_ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -91,5 +201,7 @@ LAO_Window_Init() {
 
   rb_define_method(cLayerWindow, "initialize", t_wnd_initialize, 3);
   rb_define_method(cLayerWindow, "show", t_wnd_show, 0);
+  rb_define_method(cLayerWindow, "blit_surface", t_wnd_blit_surface, -1);
   rb_define_method(cLayerWindow, "flip_buffers", t_wnd_flip_buffers, 0);
+  rb_define_method(cLayerWindow, "to_surface", t_wnd_to_surface, 0);
 }
