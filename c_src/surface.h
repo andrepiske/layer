@@ -10,6 +10,10 @@ struct LAO_Surface {
   cairo_surface_t *cairo_surface;
 
   cairo_t *cairo_ctx;
+
+  int borrowed;
 };
+
+VALUE lao_sfc_create_borrowed(SDL_Surface *sdl_surface, cairo_surface_t *cairo_surface, cairo_t *cairo_ctx);
 
 #endif
