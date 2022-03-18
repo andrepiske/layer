@@ -69,6 +69,7 @@ module DopeBuild
 
     def detect_bins
       set_bin(:pkg_config, detect_bin!('pkg-config', 'Install it via brew install pkg-config'))
+      set_bin(:ninja, detect_bin!('ninja', 'Install it via brew install ninja'))
       set_bin(:cc, detect_bin_one_of!(%w(clang gcc cc)))
     end
 
