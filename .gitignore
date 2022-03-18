@@ -5,3 +5,7 @@
 
 lib/ext/*
 !lib/ext/.keep
+
+assets/*
+!assets/.keep
+

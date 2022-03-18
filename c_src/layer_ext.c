@@ -7,9 +7,10 @@
 #include <stdlib.h>
 #include <cairo.h>
 #include <SDL.h>
+#include "window.h"
 
 VALUE cLayer;
-static FT_Library s_freetype_lib;
+FT_Library s_freetype_lib;
 
 struct S_Layer {
   int version;
@@ -51,6 +52,11 @@ t_layer_sdl_poll(VALUE self) {
     if (ev.type == SDL_QUIT) {
       return Qfalse;
     }
+    else if (ev.type == SDL_WINDOWEVENT) {
+      SDL_Window *wnd = SDL_GetWindowFromID(ev.window.windowID);
+      void *usrdata = SDL_GetWindowData(wnd, "L");
+      lao_wnd_handle_event((struct LAO_Window*)usrdata, &ev.window);
+    }
   }
 
   return Qtrue;
@@ -61,6 +67,7 @@ t_layer_sdl_poll(VALUE self) {
 
 void LAO_Window_Init();
 void LAO_Surface_Init();
+void LAO_Font_Init();
 
 extern void Init_layer_ext() {
   cLayer = rb_define_module("Layer");
@@ -70,4 +77,5 @@ extern void Init_layer_ext() {
 
   LAO_Window_Init();
   LAO_Surface_Init();
+  LAO_Font_Init();
 }
