@@ -295,6 +295,18 @@ t_sfc_line_join_set(VALUE self, VALUE _join) {
   return self;
 }
 
+static VALUE
+t_sfc_width(VALUE self) {
+  DECLARESFC(self);
+  return INT2NUM(cairo_image_surface_get_width(sfc->cairo_surface));
+}
+
+static VALUE
+t_sfc_height(VALUE self) {
+  DECLARESFC(self);
+  return INT2NUM(cairo_image_surface_get_height(sfc->cairo_surface));
+}
+
 ////////////////////////////////////////////////////////////////////////
 
 void
@@ -323,4 +335,6 @@ LAO_Surface_Init() {
   rb_define_method(cLayerSurface, "rectangle", t_sfc_rectangle, 4);
   rb_define_method(cLayerSurface, "arc", t_sfc_arc, 5);
 
+  rb_define_method(cLayerSurface, "width", t_sfc_width, 0);
+  rb_define_method(cLayerSurface, "height", t_sfc_height, 0);
 }
