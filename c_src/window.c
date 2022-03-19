@@ -147,7 +147,7 @@ t_wnd_blit_surface(int argc, const VALUE *argv, VALUE self) {
   VALUE _width;
   VALUE _height;
 
-  rb_scan_args(argc, argv, "32", &_x, &_y, &_sfc, &_width, &_height);
+  rb_scan_args(argc, argv, "32", &_sfc, &_x, &_y, &_width, &_height);
 
   struct LAO_Surface *sfc = (struct LAO_Surface*)rb_data_object_get((_sfc));
 
