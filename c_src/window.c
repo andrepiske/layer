@@ -10,6 +10,17 @@ VALUE cLayerWindow;
 
 static void
 t_wnd_gc_mark(struct LAO_Window *wnd) {
+  if (wnd->ruby_keyboard_handler) {
+    rb_gc_mark(wnd->ruby_keyboard_handler);
+  }
+
+  if (wnd->ruby_mouse_motion_handler) {
+    rb_gc_mark(wnd->ruby_mouse_motion_handler);
+  }
+
+  if (wnd->ruby_mouse_button_handler) {
+    rb_gc_mark(wnd->ruby_mouse_button_handler);
+  }
 }
 
 static void
@@ -104,9 +115,33 @@ t_wnd_initialize(VALUE self, VALUE _title, VALUE _width, VALUE _height) {
 ////////////////////////////////////////////////////////////////////////
 
 void
-lao_wnd_handle_event(struct LAO_Window *wnd, SDL_WindowEvent *ev) {
-  if (ev->event == SDL_WINDOWEVENT_RESIZED) {
-    reallocate_wnd_buffers(wnd);
+lao_wnd_handle_event(struct LAO_Window *wnd, SDL_Event *ev) {
+  if (ev->type == SDL_WINDOWEVENT) {
+    SDL_WindowEvent *win_ev = &ev->window;
+    if (win_ev->event == SDL_WINDOWEVENT_RESIZED) {
+      reallocate_wnd_buffers(wnd);
+    }
+  }
+
+  else if (ev->type == SDL_MOUSEMOTION) {
+    if (wnd->ruby_mouse_motion_handler) {
+
+      rb_funcall(wnd->ruby_mouse_motion_handler, rb_intern("call"), 7,
+        INT2NUM(ev->motion.x),
+        INT2NUM(ev->motion.y),
+        UINT2NUM(ev->motion.state),
+        UINT2NUM(ev->motion.which),
+        INT2NUM(ev->motion.xrel),
+        INT2NUM(ev->motion.yrel),
+        UINT2NUM(ev->motion.timestamp)
+      );
+    }
+  }
+
+  else if (ev->type == SDL_MOUSEBUTTONDOWN || ev->type == SDL_MOUSEBUTTONUP) {
+    if (wnd->ruby_mouse_button_handler) {
+      rb_funcall(wnd->ruby_mouse_button_handler, rb_intern("call"), 1, Qnil);
+    }
   }
 }
 
@@ -192,10 +227,38 @@ t_wnd_to_surface(VALUE self) {
   return lao_sfc_create_borrowed(wnd->sdl_surface, wnd->cairo_surface, wnd->cairo_ctx);
 }
 
+static VALUE g_sym_keyboard;
+static VALUE g_sym_mouse_motion;
+static VALUE g_sym_mouse_button;
+
+static VALUE
+t_wnd_on(VALUE self, VALUE on_what) {
+  DECLAREWND(self);
+  rb_need_block();
+
+  VALUE blk = rb_block_proc();
+
+  if (on_what == g_sym_keyboard) {
+    wnd->ruby_keyboard_handler = blk;
+  }
+  else if (on_what == g_sym_mouse_motion) {
+    wnd->ruby_mouse_motion_handler = blk;
+  }
+  else if (on_what == g_sym_mouse_button) {
+    wnd->ruby_mouse_button_handler = blk;
+  }
+
+  return self;
+}
+
 ////////////////////////////////////////////////////////////////////////
 
 void
 LAO_Window_Init() {
+  g_sym_keyboard = ID2SYM(rb_intern("keyboard"));
+  g_sym_mouse_motion = ID2SYM(rb_intern("mouse_motion"));
+  g_sym_mouse_button = ID2SYM(rb_intern("mouse_button"));
+
   cLayerWindow = rb_define_class_under(cLayer, "Window", rb_cObject);
   rb_define_alloc_func(cLayerWindow, t_wnd_allocator);
 
@@ -204,4 +267,5 @@ LAO_Window_Init() {
   rb_define_method(cLayerWindow, "blit_surface", t_wnd_blit_surface, -1);
   rb_define_method(cLayerWindow, "flip_buffers", t_wnd_flip_buffers, 0);
   rb_define_method(cLayerWindow, "to_surface", t_wnd_to_surface, 0);
+  rb_define_method(cLayerWindow, "on", t_wnd_on, 1);
 }

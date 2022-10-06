@@ -52,10 +52,17 @@ t_layer_sdl_poll(VALUE self) {
     if (ev.type == SDL_QUIT) {
       return Qfalse;
     }
-    else if (ev.type == SDL_WINDOWEVENT) {
+    else if (
+      ev.type == SDL_WINDOWEVENT ||
+      ev.type == SDL_MOUSEBUTTONDOWN ||
+      ev.type == SDL_MOUSEBUTTONUP ||
+      ev.type == SDL_MOUSEMOTION ||
+      ev.type == SDL_KEYDOWN ||
+      ev.type == SDL_KEYUP
+    ) {
       SDL_Window *wnd = SDL_GetWindowFromID(ev.window.windowID);
       void *usrdata = SDL_GetWindowData(wnd, "L");
-      lao_wnd_handle_event((struct LAO_Window*)usrdata, &ev.window);
+      lao_wnd_handle_event((struct LAO_Window*)usrdata, &ev);
     }
   }
 

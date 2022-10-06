@@ -11,8 +11,12 @@ struct LAO_Window {
   SDL_Surface *sdl_surface;
   cairo_t *cairo_ctx;
   cairo_surface_t *cairo_surface;
+
+  VALUE ruby_keyboard_handler;
+  VALUE ruby_mouse_motion_handler;
+  VALUE ruby_mouse_button_handler;
 };
 
-void lao_wnd_handle_event(struct LAO_Window *wnd, SDL_WindowEvent *ev);
+void lao_wnd_handle_event(struct LAO_Window *wnd, SDL_Event *ev);
 
 #endif
