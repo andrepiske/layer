@@ -85,6 +85,28 @@ t_sfc_load_png_b(VALUE self, VALUE file_name) {
   return Qtrue;
 }
 
+static VALUE
+t_sfc_save_png(VALUE self, VALUE file_name) {
+  DECLARESFC(self);
+
+  Check_Type(file_name, T_STRING);
+
+  const char *_file_name = StringValueCStr(file_name);
+  cairo_surface_write_to_png(sfc->cairo_surface, _file_name);
+
+  // cairo_surface_t *png_sfc = cairo_image_surface_create_from_png(StringValueCStr(file_name));
+  // if (!png_sfc) {
+  //   return Qfalse;
+  // }
+
+  // TODO: free surface
+  // free_surface();
+  // sfc->cairo_surface = png_sfc;
+
+  return Qtrue;
+
+}
+
 VALUE
 lao_sfc_create_borrowed(SDL_Surface *sdl_surface, cairo_surface_t *cairo_surface, cairo_t *cairo_ctx) {
   VALUE sfc_obj = t_sfc_allocator(cLayerSurface);
@@ -117,36 +139,7 @@ t_sfc_pop_state(VALUE self) {
 }
 
 static VALUE
-t_sfc_src_color(int argc, VALUE *argv, VALUE self) {
-  DECLARECTX(self);
-
-  VALUE r;
-  VALUE g;
-  VALUE b;
-  VALUE a;
-
-  rb_scan_args(argc, argv, "31", &r, &g, &b, &a);
-
-  if (a == Qnil) {
-    cairo_set_source_rgb(ctx,
-      NUM2DBL(r),
-      NUM2DBL(g),
-      NUM2DBL(b)
-    );
-  } else {
-    cairo_set_source_rgba(ctx,
-      NUM2DBL(r),
-      NUM2DBL(g),
-      NUM2DBL(b),
-      NUM2DBL(a)
-    );
-  }
-
-  return self;
-}
-
-static VALUE
-t_sfc_src_color_b(int argc, VALUE *argv, VALUE self) {
+t_sfc_src__color(int argc, VALUE *argv, VALUE self) {
   DECLARECTX(self);
 
   VALUE r;
@@ -296,6 +289,53 @@ t_sfc_line_join_set(VALUE self, VALUE _join) {
 }
 
 static VALUE
+t_sfc_new_path(VALUE self) {
+  DECLARESFC(self);
+  cairo_new_path(sfc->cairo_ctx);
+  return self;
+}
+
+static VALUE
+t_sfc_set_pixel(VALUE self, VALUE x, VALUE y, VALUE r, VALUE g, VALUE b) {
+  DECLARESFC(self);
+
+  const unsigned int dest_x = NUM2UINT(x);
+  const unsigned int dest_y = NUM2UINT(y);
+
+  cairo_surface_t *img_sfc;
+  const unsigned int dest_depth = 4;
+  cairo_surface_t *const surface = sfc->cairo_surface;
+
+  cairo_surface_flush(surface);
+  img_sfc = cairo_surface_map_to_image(surface, 0);
+
+  const unsigned int stride = (unsigned int)cairo_image_surface_get_stride(img_sfc);
+  unsigned char *dest = cairo_image_surface_get_data(img_sfc);
+
+  unsigned char *local_dest = dest + stride * dest_y + dest_x * dest_depth;
+
+  // local_dest[0] = (unsigned char)(NUM2UINT(b));
+  // local_dest[1] = (unsigned char)(NUM2UINT(g));
+  // local_dest[2] = (unsigned char)(NUM2UINT(r));
+  // local_dest[3] = 255;
+
+  unsigned int *cr = (unsigned int*)local_dest;
+  *cr = (unsigned int)(
+
+      ( ((unsigned char)NUM2UINT(b)) )
+    | ( ((unsigned char)NUM2UINT(g)) << 8 )
+    | ( ((unsigned char)NUM2UINT(r)) << 16 )
+    | (255 << 24)
+
+  );
+
+  cairo_surface_unmap_image(surface, img_sfc);
+  cairo_surface_mark_dirty(surface);
+
+  return self;
+}
+
+static VALUE
 t_sfc_width(VALUE self) {
   DECLARESFC(self);
   return INT2NUM(cairo_image_surface_get_width(sfc->cairo_surface));
@@ -316,14 +356,14 @@ LAO_Surface_Init() {
 
   rb_define_method(cLayerSurface, "initialize", t_sfc_initialize, 2);
   rb_define_method(cLayerSurface, "load_png!", t_sfc_load_png_b, 1);
+  rb_define_method(cLayerSurface, "save_png", t_sfc_save_png, 1);
 
   // Cairo Draw methods
 
   rb_define_method(cLayerSurface, "push_state", t_sfc_push_state, 0);
   rb_define_method(cLayerSurface, "pop_state", t_sfc_pop_state, 0);
 
-  rb_define_method(cLayerSurface, "src_color", t_sfc_src_color, -1);
-  rb_define_method(cLayerSurface, "src_color_b", t_sfc_src_color_b, -1);
+  rb_define_method(cLayerSurface, "_src_color", t_sfc_src__color, -1);
   rb_define_method(cLayerSurface, "src_surface", t_sfc_src_surface, -1);
   rb_define_method(cLayerSurface, "line_width=", t_sfc_line_width_set, 1);
   rb_define_method(cLayerSurface, "line_join=", t_sfc_line_join_set, 1);
@@ -334,6 +374,9 @@ LAO_Surface_Init() {
   rb_define_method(cLayerSurface, "line_to", t_sfc_line_to, 2);
   rb_define_method(cLayerSurface, "rectangle", t_sfc_rectangle, 4);
   rb_define_method(cLayerSurface, "arc", t_sfc_arc, 5);
+  rb_define_method(cLayerSurface, "new_path", t_sfc_new_path, 0);
+
+  rb_define_method(cLayerSurface, "set_pixel", t_sfc_set_pixel, 5);
 
   rb_define_method(cLayerSurface, "width", t_sfc_width, 0);
   rb_define_method(cLayerSurface, "height", t_sfc_height, 0);
