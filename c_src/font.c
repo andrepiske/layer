@@ -25,6 +25,8 @@ static VALUE
 t_font_allocator(VALUE klass) {
   struct LAO_Font *font = (struct LAO_Font*)xmalloc(sizeof(struct LAO_Font));
   font->face = 0;
+  font->size = 0;
+  font->color = 0;
   return Data_Wrap_Struct(klass, t_font_gc_mark, t_font_free, font);
 }
 
@@ -33,7 +35,7 @@ t_font_initialize(VALUE self, VALUE _file_name, VALUE _size) {
   DECLAREFONT(self);
 
   int err;
-  double size = NUM2DBL(_size);
+  float size = (float)NUM2DBL(_size);
   FT_Face face = 0;
 
   const char *file_name = StringValueCStr(_file_name);
@@ -54,13 +56,15 @@ t_font_initialize(VALUE self, VALUE _file_name, VALUE _size) {
     exit(1);
   }
 
-  err = FT_Set_Char_Size(face, 0, (int)(size * 64.0), 72, 72);
+  err = FT_Set_Char_Size(face, 0, (int)(size * 64.0), 128, 128);
   if (err) {
     printf("Error to set char size: 0x%02x\n", err);
     exit(1);
   }
 
   font->face = (void*)face;
+  font->size = size;
+  font->color = 0xFF000000;
 
   return self;
 }
@@ -71,10 +75,11 @@ blend_colors(unsigned char sR, unsigned char sG, unsigned char sB, unsigned char
 {
   unsigned int final_color;
   unsigned char *color = (unsigned char*)&final_color;
+
   color[0] = (unsigned char)(  ((float)(sB / 255.f) * (float)(sA / 255.f) + (float)(dB / 255.f) * (float)(1.f - sA / 255.f)) * 255.f );
   color[1] = (unsigned char)(  ((float)(sG / 255.f) * (float)(sA / 255.f) + (float)(dG / 255.f) * (float)(1.f - sA / 255.f)) * 255.f );
   color[2] = (unsigned char)(  ((float)(sR / 255.f) * (float)(sA / 255.f) + (float)(dR / 255.f) * (float)(1.f - sA / 255.f)) * 255.f );
-  color[3] = (unsigned char)(  ((float)(sA / 255.f) * (float)(sA / 255.f) + (float)(dA / 255.f) * (float)(1.f - sA / 255.f)) * 255.f );
+  color[3] = (unsigned char)(  ((float)(sA / 255.f)                       + (float)(dA / 255.f) * (float)(1.f - sA / 255.f)) * 255.f );
 
   return final_color;
 }
@@ -114,7 +119,7 @@ t_font_draw_text(int argc, const VALUE *argv, VALUE self)
   unsigned int dest_depth = 4;
   unsigned int src_depth = 1;
 
-  unsigned int current_color = 0xFFFF00FF;
+  unsigned int current_color = font->color;
 
   for (int i = 0; i < txt_length; ++i) {
     FT_UInt glyph_index = FT_Get_Char_Index(face, text[i]);
@@ -122,8 +127,8 @@ t_font_draw_text(int argc, const VALUE *argv, VALUE self)
       printf("failed to load glyph for '%c' with err 0x%02x\n", text[i], err);
       exit(1);
     }
-    if ((err = FT_Render_Glyph(slot, FT_RENDER_MODE_LCD))) {
-    // if ((err = FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL))) {
+    // if ((err = FT_Render_Glyph(slot, FT_RENDER_MODE_LCD))) {
+    if ((err = FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL))) {
       printf("failed to render glyph for '%c' with err 0x%02x\n", text[i], err);
       exit(1);
     }
@@ -143,29 +148,13 @@ t_font_draw_text(int argc, const VALUE *argv, VALUE self)
           continue;
         }
 
-        float dst_r = 1.0f;
-        float dst_g = 1.0f;
-        float dst_b = 1.0f;
-
-        // dst = #e924dc
-        // dst_b = (0xdc / 255.f);
-        // dst_g = (0x24 / 255.f);
-        // dst_r = (0xe9  / 255.f);
-
-        // dst = #ac480f
-        // dst_b = (0x0f / 255.f);
-        // dst_g = (0x47 / 255.f);
-        // dst_r = (0xac  / 255.f);
-
-        dst_r = ((current_color) & 0xFF) / 255.f;
-        dst_g = ((current_color >> 8) & 0xFF) / 255.f;
-        dst_b = ((current_color >> 16) & 0xFF) / 255.f;
+        unsigned char dst_b = (current_color) & 0xFF;
+        unsigned char dst_g = (current_color >> 8) & 0xFF;
+        unsigned char dst_r = (current_color >> 16) & 0xFF;
 
         if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_LCD) {
           src_depth = 3;
         } else if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
-          // printf("Gray levels: %d\n", slot->bitmap.num_grays);
-          // exit(1);
         } else {
           printf("Unknown pixel mode %d\n", slot->bitmap.pixel_mode);
           exit(1);
@@ -174,58 +163,32 @@ t_font_draw_text(int argc, const VALUE *argv, VALUE self)
         unsigned char *local_dest = dest + stride * dest_y + dest_x * dest_depth;
         unsigned char *local_src = slot->bitmap.buffer + slot->bitmap.pitch * y + x * src_depth;
 
-        float src_r=0.f, src_g=0.f, src_b=0.f;
+        unsigned char src_a = 0;
+
         if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_LCD) {
-          src_r = (float)(local_src[0]);
-          src_g = (float)(local_src[1]);
-          src_b = (float)(local_src[2]);
+          printf("LCD not implemented\n");
+          exit(1);
         } else if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
-          src_r = (float)local_src[0];
-          src_g = (float)local_src[0];
-          src_b = (float)local_src[0];
+          src_a = local_src[0];
         }
 
-        // float src_a = (src_r + src_g + src_b) / 3.0;
-
-        if (src_r > 0.f || src_g > 0.f || src_b > 0.f) {
+        if (src_a > 0.f) {
           unsigned int color = blend_colors(
-            (unsigned char)(src_r * dst_r),
-            (unsigned char)(src_g * dst_g),
-            (unsigned char)(src_b * dst_b),
-            (unsigned char)(src_r),
+            dst_r, dst_g, dst_b, src_a,
 
-            local_dest[0],
-            local_dest[1],
             local_dest[2],
+            local_dest[1],
+            local_dest[0],
             local_dest[3]);
 
           *((unsigned int*)local_dest) = color;
-
-          // local_dest[0] = 0;// - local_dest[0];
-          // local_dest[1] = 0;//255 - local_dest[1];
-          // local_dest[2] = 255;//255 - local_dest[2];
-          // local_dest[3] = 127;
-
-            // local_dest)
-          // local_dest[0] = (unsigned char)(src_r * dst_r);
-          // local_dest[1] = (unsigned char)(src_g * dst_g);
-          // local_dest[2] = (unsigned char)(src_b * dst_b);
-          // local_dest[3] = (unsigned char)(src_a * (255.f / 255.f));
         }
 
-        if (x == 0 || y == 0 || x == (int)slot->bitmap.width - 1 || y == (int)slot->bitmap.rows - 1) {
-          // *((unsigned int*)local_dest) = 0xFFFFFFFF;
-        }
+        // if (x == 0 || y == 0 || x == (int)slot->bitmap.width - 1 || y == (int)slot->bitmap.rows - 1) {
+        //   *((unsigned int*)local_dest) = 0xFF00FFFF;
+        // }
       }
     }
-
-    // printf("pixel mode = %d ; %d (%c) [%d, %d]\n",
-    //   (int)slot->bitmap.pixel_mode,
-    //   (int)slot->bitmap.width,
-    //   text[i],
-    //   slot->bitmap_left,
-    //   slot->bitmap_top
-    // );
 
     pos_x += slot->advance.x >> 6;
   }
@@ -236,6 +199,30 @@ t_font_draw_text(int argc, const VALUE *argv, VALUE self)
   return Qtrue;
 }
 
+static VALUE
+t_font_size_set(VALUE self, VALUE _size) {
+  DECLAREFONT(self);
+  font->size = (float)NUM2DBL(_size);
+  FT_Set_Char_Size(font->face, 0, (int)(font->size * 64.0), 128, 128);
+  return Qnil;
+}
+
+static VALUE
+t_font_size(VALUE self) {
+  DECLAREFONT(self);
+  return DBL2NUM((double)font->size);
+}
+
+static VALUE t_font__color(VALUE self) {
+  DECLAREFONT(self);
+  return UINT2NUM(font->color);
+}
+
+static VALUE t_font__color_set(VALUE self, VALUE _value) {
+  DECLAREFONT(self);
+  font->color = NUM2UINT(_value);
+  return _value;
+}
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -247,7 +234,8 @@ LAO_Font_Init() {
   rb_define_method(cLayerFont, "initialize", t_font_initialize, 2);
   rb_define_method(cLayerFont, "draw_text", t_font_draw_text, -1);
 
-  // rb_define_method(cLayerFont, "show", t_wnd_show, 0);
-  // rb_define_method(cLayerFont, "blit_surface", t_wnd_blit_surface, -1);
-  // rb_define_method(cLayerFont, "flip_buffers", t_wnd_flip_buffers, 0);
+  rb_define_method(cLayerFont, "size", t_font_size, 0);
+  rb_define_method(cLayerFont, "size=", t_font_size_set, 1);
+  rb_define_method(cLayerFont, "_color", t_font__color, 0);
+  rb_define_method(cLayerFont, "_color=", t_font__color_set, 1);
 }

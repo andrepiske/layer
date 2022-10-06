@@ -6,6 +6,8 @@
 
 struct LAO_Font {
   void *face;
+  float size;
+  unsigned int color;
 };
 
 #endif
