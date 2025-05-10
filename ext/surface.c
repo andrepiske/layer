@@ -68,6 +68,7 @@ t_sfc_allocator(VALUE klass) {
   sfc->cairo_ctx = 0;
   sfc->borrowed = 0;
 
+
   // return Data_Wrap_Struct(klass, t_sfc_gc_mark, t_sfc_free, sfc);
   // return Data_Wrap_Struct(klass, 0, t_sfc_free, sfc);
   return TypedData_Wrap_Struct(klass, &lao_surface_datatype, sfc);
@@ -215,7 +216,8 @@ t_sfc_src_surface(int argc, VALUE *argv, VALUE self) {
   const double x = (_x == Qnil) ? 0.0 : NUM2DBL(_x);
   const double y = (_y == Qnil) ? 0.0 : NUM2DBL(_y);
 
-  struct LAO_Surface *src_sfc = (struct LAO_Surface*)rb_data_object_get((_src_sfc));
+  struct LAO_Surface *src_sfc = NULL;
+  TypedData_Get_Struct(_src_sfc, struct LAO_Surface, &lao_surface_datatype, (src_sfc));
 
   cairo_set_source_surface(ctx, src_sfc->cairo_surface, x, y);
 
