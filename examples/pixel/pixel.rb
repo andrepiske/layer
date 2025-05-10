@@ -1,13 +1,10 @@
 #!/usr/bin/env ruby
-$:.unshift(File.absolute_path("lib", __dir__))
+$:.unshift(File.absolute_path("../../lib", __dir__))
 require 'layer'
 
 class GenApp
   def initialize
     @sf = Layer::Surface.new(2, 2)
-    # @font = Layer::Font.new("assets/pacifico.ttf", 40)
-    # @font = Layer::Font.new("assets/roboto-medium.ttf", 40)
-    # @pic3 = Layer::Surface.new(512, 512)
   end
 
   def run

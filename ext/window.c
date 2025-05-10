@@ -5,6 +5,15 @@
 extern VALUE cLayer;
 VALUE cLayerWindow;
 
+static VALUE g_sym_keyboard;
+static VALUE g_sym_mouse_motion;
+static VALUE g_sym_mouse_button;
+
+static VALUE g_sym_shift;
+static VALUE g_sym_ctrl;
+static VALUE g_sym_alt;
+static VALUE g_sym_cmd;
+
 #define DECLAREWND(o) \
   struct LAO_Window *wnd = (struct LAO_Window*)rb_data_object_get((o))
 
@@ -47,10 +56,7 @@ t_wnd_free(struct LAO_Window *wnd) {
 static VALUE
 t_wnd_allocator(VALUE klass) {
   struct LAO_Window *wnd = (struct LAO_Window*)xmalloc(sizeof(struct LAO_Window));
-  wnd->sdl_wnd = 0;
-  wnd->sdl_surface = 0;
-  wnd->cairo_ctx = 0;
-  wnd->cairo_surface = 0;
+  memset(wnd, 0, sizeof(struct LAO_Window));
   return Data_Wrap_Struct(klass, t_wnd_gc_mark, t_wnd_free, wnd);
 }
 
@@ -140,7 +146,28 @@ lao_wnd_handle_event(struct LAO_Window *wnd, SDL_Event *ev) {
 
   else if (ev->type == SDL_MOUSEBUTTONDOWN || ev->type == SDL_MOUSEBUTTONUP) {
     if (wnd->ruby_mouse_button_handler) {
-      rb_funcall(wnd->ruby_mouse_button_handler, rb_intern("call"), 1, Qnil);
+      rb_funcall(wnd->ruby_mouse_button_handler, rb_intern("call"), 7,
+        INT2NUM(ev->button.x),
+        INT2NUM(ev->button.y),
+        INT2NUM(ev->button.button),
+        UINT2NUM(ev->button.state),
+        INT2NUM(ev->button.clicks),
+        INT2NUM(ev->button.which),
+        UINT2NUM(ev->button.timestamp)
+      );
+    }
+  }
+
+  else if (ev->type == SDL_KEYDOWN || ev->type == SDL_KEYUP) {
+    if (wnd->ruby_keyboard_handler) {
+      rb_funcall(wnd->ruby_keyboard_handler, rb_intern("call"), 6,
+        INT2NUM(ev->key.state),
+        INT2NUM(ev->key.repeat),
+        INT2NUM(ev->key.keysym.scancode),
+        INT2NUM(ev->key.keysym.sym),
+        INT2NUM(ev->key.keysym.mod),
+        UINT2NUM(ev->key.timestamp)
+      );
     }
   }
 }
@@ -173,63 +200,10 @@ t_wnd_flip_buffers(VALUE self) {
 }
 
 static VALUE
-t_wnd_blit_surface(int argc, const VALUE *argv, VALUE self) {
-  DECLAREWND(self);
-
-  VALUE _x;
-  VALUE _y;
-  VALUE _sfc;
-  VALUE _width;
-  VALUE _height;
-
-  rb_scan_args(argc, argv, "32", &_sfc, &_x, &_y, &_width, &_height);
-
-  struct LAO_Surface *sfc = (struct LAO_Surface*)rb_data_object_get((_sfc));
-
-  double x = NUM2DBL(_x);
-  double y = NUM2DBL(_y);
-
-  cairo_t *cr = wnd->cairo_ctx;
-
-  // cairo_set_source_rgba(cr, 0x88 / 255.0, 0xd9 / 255.0, 0xde / 255.0, 1.0); // #88d9de #ded988
-  // cairo_rectangle(cr, (double)x, (double)y, 128.0, 128.0);
-  // cairo_fill(cr);
-
-  if (!sfc->cairo_surface) {
-    return Qfalse;
-  }
-
-  int sfc_width = cairo_image_surface_get_width(sfc->cairo_surface);
-  int sfc_height = cairo_image_surface_get_height(sfc->cairo_surface);
-
-  cairo_matrix_t matrix;
-  if (_width != Qnil && _height != Qnil) {
-    cairo_scale(cr, NUM2DBL(_width) / (double)sfc_width, NUM2DBL(_height) / (double)sfc_height);
-    cairo_get_matrix(cr, &matrix);
-  }
-
-  cairo_set_source_surface(cr,
-    sfc->cairo_surface, x, y
-  );
-  cairo_rectangle(cr, x, y, sfc_width, sfc_height);
-  cairo_fill(cr);
-
-  if (_width != Qnil && _height != Qnil) {
-    cairo_set_matrix(cr, &matrix);
-  }
-
-  return Qtrue;
-}
-
-static VALUE
 t_wnd_to_surface(VALUE self) {
   DECLAREWND(self);
   return lao_sfc_create_borrowed(wnd->sdl_surface, wnd->cairo_surface, wnd->cairo_ctx);
 }
-
-static VALUE g_sym_keyboard;
-static VALUE g_sym_mouse_motion;
-static VALUE g_sym_mouse_button;
 
 static VALUE
 t_wnd_on(VALUE self, VALUE on_what) {
@@ -247,8 +221,36 @@ t_wnd_on(VALUE self, VALUE on_what) {
   else if (on_what == g_sym_mouse_button) {
     wnd->ruby_mouse_button_handler = blk;
   }
+  else {
+    rb_raise(rb_eArgError, "Invalid argument passed to 'on'");
+  }
 
   return self;
+}
+
+static VALUE
+t_wnd_size(VALUE self) {
+  DECLAREWND(self);
+  int w = -1, h = -1;
+  SDL_GetWindowSizeInPixels(wnd->sdl_wnd, &w, &h);
+  return rb_ary_new_from_args(2, INT2NUM(w), INT2NUM(h));
+}
+
+static VALUE
+t_modf_keys(VALUE _) {
+  int numkeys = 0;
+  const Uint8 *keys = SDL_GetKeyboardState(&numkeys);
+  if (numkeys < 228 || !numkeys || !keys) {
+    // TODO: raise error?
+    return Qnil;
+  }
+
+  VALUE r = rb_hash_new_capa(4);
+  rb_hash_aset(r, g_sym_shift, keys[225] ? Qtrue : Qfalse);
+  rb_hash_aset(r, g_sym_ctrl, keys[224] ? Qtrue : Qfalse);
+  rb_hash_aset(r, g_sym_alt, keys[226] ? Qtrue : Qfalse);
+  rb_hash_aset(r, g_sym_cmd, keys[227] ? Qtrue : Qfalse);
+  return r;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -259,13 +261,19 @@ LAO_Window_Init() {
   g_sym_mouse_motion = ID2SYM(rb_intern("mouse_motion"));
   g_sym_mouse_button = ID2SYM(rb_intern("mouse_button"));
 
+  g_sym_shift = ID2SYM(rb_intern("shift"));
+  g_sym_ctrl = ID2SYM(rb_intern("ctrl"));
+  g_sym_alt = ID2SYM(rb_intern("alt"));
+  g_sym_cmd = ID2SYM(rb_intern("cmd"));
+
   cLayerWindow = rb_define_class_under(cLayer, "Window", rb_cObject);
   rb_define_alloc_func(cLayerWindow, t_wnd_allocator);
 
   rb_define_method(cLayerWindow, "initialize", t_wnd_initialize, 3);
   rb_define_method(cLayerWindow, "show", t_wnd_show, 0);
-  rb_define_method(cLayerWindow, "blit_surface", t_wnd_blit_surface, -1);
   rb_define_method(cLayerWindow, "flip_buffers", t_wnd_flip_buffers, 0);
   rb_define_method(cLayerWindow, "to_surface", t_wnd_to_surface, 0);
   rb_define_method(cLayerWindow, "on", t_wnd_on, 1);
+  rb_define_method(cLayerWindow, "size", t_wnd_size, 0);
+  rb_define_method(cLayerWindow, "modf_keys", t_modf_keys, 0);
 }

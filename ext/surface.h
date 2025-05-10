@@ -16,4 +16,6 @@ struct LAO_Surface {
 
 VALUE lao_sfc_create_borrowed(SDL_Surface *sdl_surface, cairo_surface_t *cairo_surface, cairo_t *cairo_ctx);
 
+struct LAO_Surface *lao_sfc_from_value(VALUE v);
+
 #endif

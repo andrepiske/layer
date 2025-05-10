@@ -9,4 +9,12 @@ class Layer::Surface
 
     _src_color(c.r, c.g, c.b, c.a)
   end
+
+  def preserving_state
+    push_state
+
+    yield(self)
+  ensure
+    pop_state
+  end
 end

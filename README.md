@@ -8,6 +8,7 @@ Bring graphics and GUI to Ruby using SDL and Cairo.
 
 ```
 $ ./build/build.rb > build.ninja
+$ ninja -t clean
 $ ninja
 ```
 
@@ -17,3 +18,13 @@ $ ninja
 $ ./app.rb
 ```
 
+## Generate
+
+```
+bundle exec ./gen.rb
+
+```
+
+## Requirements
+
+brew install ninja

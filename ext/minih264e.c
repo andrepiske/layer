@@ -1,0 +1,3 @@
+#define MINIH264_IMPLEMENTATION
+#define ENABLE_TEMPORAL_SCALABILITY 0
+#include "minih264e.h"

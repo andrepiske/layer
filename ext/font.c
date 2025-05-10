@@ -85,6 +85,55 @@ blend_colors(unsigned char sR, unsigned char sG, unsigned char sB, unsigned char
 }
 
 static VALUE
+t_font_calc_metrics(int argc, const VALUE *argv, VALUE self)
+{
+  DECLAREFONT(self);
+
+  VALUE _text;
+  rb_scan_args(argc, argv, "1", &_text);
+  Check_Type(_text, T_STRING);
+
+  const char *text = StringValueCStr(_text);
+  const int txt_length = (int)strlen(text);
+
+  FT_Face face = (FT_Face)font->face;
+  FT_GlyphSlot slot = face->glyph;
+
+  VALUE result = rb_hash_new_capa(3);
+
+  int text_height = 0;
+  int text_width = 0;
+  int baseline = 0;
+
+  for (int i = 0; i < txt_length; ++i) {
+    FT_UInt glyph_index = FT_Get_Char_Index(face, text[i]);
+    FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT);
+
+    if (slot->metrics.height > text_height) {
+      text_height = (int)slot->metrics.height;
+    }
+    if (slot->metrics.horiBearingY > baseline) {
+      baseline = (int)slot->metrics.horiBearingY;
+    }
+
+    text_width += slot->metrics.horiAdvance;
+
+    // rb_hash_aset(item, ID2SYM(rb_intern("width")), INT2NUM(slot->metrics.width / 64));
+    // rb_hash_aset(item, ID2SYM(rb_intern("height")), INT2NUM(slot->metrics.height / 64));
+    // rb_hash_aset(item, ID2SYM(rb_intern("h_bearing_x")), INT2NUM(slot->metrics.horiBearingX / 64));
+    // rb_hash_aset(item, ID2SYM(rb_intern("h_bearing_y")), INT2NUM(slot->metrics.horiBearingY / 64));
+    // rb_hash_aset(item, ID2SYM(rb_intern("h_advance")), INT2NUM(slot->metrics.horiAdvance / 64));
+    // rb_ary_push(result, item);
+  }
+
+  rb_hash_aset(result, ID2SYM(rb_intern("height")), INT2NUM(text_height >> 6));
+  rb_hash_aset(result, ID2SYM(rb_intern("width")), INT2NUM(text_width >> 6));
+  rb_hash_aset(result, ID2SYM(rb_intern("baseline")), INT2NUM(baseline >> 6));
+
+  return result;
+}
+
+static VALUE
 t_font_draw_text(int argc, const VALUE *argv, VALUE self)
 {
   DECLAREFONT(self);
@@ -96,7 +145,9 @@ t_font_draw_text(int argc, const VALUE *argv, VALUE self)
 
   rb_scan_args(argc, argv, "4", &_dest, &_x, &_y, &_text);
 
-  struct LAO_Surface *dest_obj = ((struct LAO_Surface*)rb_data_object_get(_dest));
+  // struct LAO_Surface *dest_obj = ((struct LAO_Surface*)rb_data_object_get(_dest));
+  struct LAO_Surface *dest_obj = lao_sfc_from_value(_dest);
+  // TypedData_Get_Struct((_dest), struct LAO_Surface, &lao_surface_datatype, (sfc));
 
   Check_Type(_text, T_STRING);
   const char *text = StringValueCStr(_text);
@@ -233,6 +284,7 @@ LAO_Font_Init() {
 
   rb_define_method(cLayerFont, "initialize", t_font_initialize, 2);
   rb_define_method(cLayerFont, "draw_text", t_font_draw_text, -1);
+  rb_define_method(cLayerFont, "calc_metrics", t_font_calc_metrics, -1);
 
   rb_define_method(cLayerFont, "size", t_font_size, 0);
   rb_define_method(cLayerFont, "size=", t_font_size_set, 1);

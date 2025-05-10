@@ -2,5 +2,6 @@
 
 source "https://rubygems.org"
 
-gem "pry"
-
+gem "bigdecimal"
+gem "debug"
+gem "get_process_mem"

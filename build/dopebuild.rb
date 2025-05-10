@@ -28,11 +28,23 @@ module DopeBuild
       lines << "warnflags = -Wall -Wextra -Wdeprecated-declarations -Wdivision-by-zero -Wimplicit-function-declaration -Wimplicit-int -Wmisleading-indentation -Wpointer-arith -Wshorten-64-to-32 -Wwrite-strings -Wmissing-noreturn -Wno-constant-logical-operand -Wno-long-long -Wno-missing-field-initializers -Wno-overlength-strings -Wno-parentheses-equality -Wno-self-assign -Wno-tautological-compare -Wno-unused-parameter -Wno-unused-value -Wunused-variable -Wextra-tokens"
       lines << "ruby_mkmf_cflags = -fno-common -pipe $warnflags\n"
 
-      ruby_cflags = "-I#{@ruby_prefix}/include/ruby-#{@ruby_base_version} -I#{@ruby_prefix}/include/ruby-#{@ruby_base_version}/#{@platform_name}"
+      ruby_cflags = "-I#{@ruby_include_path} -I#{@ruby_include_path}/#{@platform_name}"
       lines << "ruby_cflags = #{ruby_cflags}"
 
+      ruby_link = if RUBY_PLATFORM =~ /darwin/
+        "ruby.#{@ruby_base_version[0..1].join('.')}"
+      else
+        'ruby'
+      end
       # FIXME: ruby 3 hardcoded
-      ruby_ldflags = "-fstack-protector-strong -L#{@ruby_prefix}/lib -lruby.3.0 -Wl,-undefined,dynamic_lookup -Wl,-multiply_defined,suppress"
+      ruby_ldflags = "-fstack-protector-strong -L#{@ruby_prefix}/lib -l#{ruby_link} -Wl,-undefined,dynamic_lookup"
+
+      # -multiply_defined is obsoloete. Let's omit it.
+      # if RUBY_PLATFORM =~ /darwin/
+      #   ruby_ldflags = "#{ruby_ldflags} -Wl,-multiply_defined,suppress"
+      #   # ruby_ldflags = "#{ruby_ldflags} -Wl,suppress"
+      # end
+
       lines << "ruby_ldflags = #{ruby_ldflags}"
 
       deps_cflags = @libs.map { |n, _| "$#{n}_cflags" }.join(' ')
@@ -45,10 +57,18 @@ module DopeBuild
       lines << ''
 
       lines << 'rule cc'
-      lines << "  command = #{bin :cc} -fdeclspec $cflags -c $in -o $out"
+      if RUBY_PLATFORM =~ /darwin/
+        lines << "  command = #{bin :cc} -fdeclspec $cflags -c $in -o $out"
+      else
+        lines << "  command = #{bin :cc} -fdeclspec -fPIC $cflags -c $in -o $out"
+      end
 
       lines << 'rule lcc'
-      lines << "  command = #{bin :cc} -fdeclspec -dynamic -bundle $cflags $linker_flags $ruby_ldflags $in -o $out"
+      if RUBY_PLATFORM =~ /darwin/
+        lines << "  command = #{bin :cc} -fdeclspec -dynamic -bundle $cflags $linker_flags $ruby_ldflags $in -o $out"
+      else
+        lines << "  command = #{bin :cc} -fdeclspec -dynamic -shared $cflags $linker_flags $ruby_ldflags $in -o $out"
+      end
 
       lines << ''
 
@@ -56,13 +76,17 @@ module DopeBuild
       build_files.each do |file|
         ext = File.extname(file)
         only_file = file[0...(-ext.length)]
-        lines << "build out/#{only_file}.o: cc c_src/#{file}"
+        lines << "build out/#{only_file}.o: cc ext/#{file}"
         out_files << "out/#{only_file}.o"
       end
 
       lines << ''
 
-      lines << "build lib/ext/layer_ext.bundle: lcc #{out_files.join(' ')}"
+      if RUBY_PLATFORM =~ /darwin/
+        lines << "build lib/ext/layer_ext.bundle: lcc #{out_files.join(' ')}"
+      else
+        lines << "build lib/ext/layer_ext.so: lcc #{out_files.join(' ')}"
+      end
 
       puts lines.join("\n")
     end
@@ -70,14 +94,34 @@ module DopeBuild
     def detect_bins
       set_bin(:pkg_config, detect_bin!('pkg-config', 'Install it via brew install pkg-config'))
       set_bin(:ninja, detect_bin!('ninja', 'Install it via brew install ninja'))
-      set_bin(:cc, detect_bin_one_of!(%w(clang gcc cc)))
+      set_bin(:cc, detect_bin_one_of!(%w(clang-15 clang gcc cc)))
     end
 
     def detect_ruby
+      unless detect_ruby_rbenv! || detect_ruby_native!
+        puts("Could not detect a ruby installation")
+        exit(1)
+      end
+    end
+
+    def detect_ruby_native!
+      @ruby_prefix = "/usr/local"
+      @ruby_version = RUBY_VERSION
+      @ruby_base_version = (@ruby_version.split('.')[0..1] + ['0'])
+      @ruby_include_path = File.join(@ruby_prefix, 'include', "ruby-#{@ruby_base_version.join('.')}")
+      unless File.directory?(@ruby_include_path)
+        puts "Error: could not find includes path at #{@ruby_include_path}"
+        exit(1)
+      end
+
+      true
+    end
+
+    def detect_ruby_rbenv!
       rbenv_prefix = `rbenv prefix` rescue nil
       if rbenv_prefix == nil
-        puts "Error: Missing rbenv installation"
-        exit(1)
+        STDERR.puts "rbenv not detected"
+        return false
       end
 
       @ruby_prefix = rbenv_prefix.chomp
@@ -88,7 +132,18 @@ module DopeBuild
       end
 
       @ruby_version = `rbenv version`.match(/^\d+\.\d+\.\d+/)[0]
-      @ruby_base_version = @ruby_version.split('.')[0] + '.0.0'
+      @ruby_base_version = (@ruby_version.split('.')[0..1] + ['0'])
+
+      base_include_path = File.join(@ruby_prefix, 'include')
+      subdir_name = File.basename(Dir["#{base_include_path}/*"].first)
+      # @ruby_include_path = File.join(@ruby_prefix, 'include', "ruby-#{@ruby_base_version.join('.')}")
+      @ruby_include_path = File.join(@ruby_prefix, 'include', subdir_name)
+      unless File.directory?(@ruby_include_path)
+        puts "Error: could not find includes path at #{@ruby_include_path}"
+        exit(1)
+      end
+
+      true
     end
 
     def require_lib!(name)
