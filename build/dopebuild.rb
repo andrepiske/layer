@@ -56,12 +56,17 @@ module DopeBuild
 
       lines << ''
 
+      cc_cpp_args = \
+        if RUBY_PLATFORM =~ /darwin/
+          "-fdeclspec $cflags -c $in -o $out"
+        else
+          "-fdeclspec -fPIC $cflags -c $in -o $out"
+        end
+
       lines << 'rule cc'
-      if RUBY_PLATFORM =~ /darwin/
-        lines << "  command = #{bin :cc} -fdeclspec $cflags -c $in -o $out"
-      else
-        lines << "  command = #{bin :cc} -fdeclspec -fPIC $cflags -c $in -o $out"
-      end
+      lines << "  command = #{bin :cc} #{cc_cpp_args}"
+      lines << 'rule cpp'
+      lines << "  command = #{bin :cpp} -std=c++20 #{cc_cpp_args}"
 
       lines << 'rule lcc'
       if RUBY_PLATFORM =~ /darwin/
@@ -76,7 +81,13 @@ module DopeBuild
       build_files.each do |file|
         ext = File.extname(file)
         only_file = file[0...(-ext.length)]
-        lines << "build out/#{only_file}.o: cc ext/#{file}"
+
+        compiler = {
+          '.c' => 'cc',
+          '.cpp' => 'cpp',
+        }.fetch(ext)
+
+        lines << "build out/#{only_file}.o: #{compiler} ext/#{file}"
         out_files << "out/#{only_file}.o"
       end
 
@@ -95,6 +106,7 @@ module DopeBuild
       set_bin(:pkg_config, detect_bin!('pkg-config', 'Install it via brew install pkg-config'))
       set_bin(:ninja, detect_bin!('ninja', 'Install it via brew install ninja'))
       set_bin(:cc, detect_bin_one_of!(%w(clang-15 clang gcc cc)))
+      set_bin(:cpp, detect_bin_one_of!(%w(clang++ g++)))
     end
 
     def detect_ruby
@@ -154,6 +166,21 @@ module DopeBuild
         cflags: cflags.chomp,
         libs: libs.chomp
       }
+    end
+
+    def require_lib_2!(name, base_path, includes, lib_rel_paths, link_libs)
+      cflags = includes.map do |ri|
+        "-I#{File.join(base_path, ri).chomp('/')}"
+      end.join(' ')
+
+      libs = lib_rel_paths.map do |lp|
+        "-L" + File.join(base_path, lp).chomp('/')
+      end
+      libs << link_libs.map{ |x| "-l#{x}" }
+
+      libs = libs.join(' ')
+
+      @libs[name.to_sym] = { cflags:, libs: }
     end
 
     private

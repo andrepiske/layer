@@ -1,4 +1,6 @@
+// extern "C" {
 #include "surface.h"
+//  }
 
 extern VALUE cLayer;
 VALUE cLayerSurface;
@@ -74,6 +76,15 @@ t_sfc_allocator(VALUE klass) {
   // return TypedData_Make_Struct(klass, struct LAO_Surface, &lao_surface_datatype, 0);
 }
 
+#include "include/core/SkCanvas.h"
+#include "include/core/SkGraphics.h"
+#include "include/core/SkPaint.h"
+#include "include/core/SkSurface.h"
+
+#include "include/core/SkStream.h"              // for SkFILEWStream
+#include "include/codec/SkEncodedImageFormat.h" // for SkEncodedImageFormat
+// #include "include/core/SkImageEncoder.h"        // for SkEncodeImage
+
 static VALUE
 t_sfc_initialize(VALUE self, VALUE _width, VALUE _height) {
   DECLARESFC(self);
@@ -82,6 +93,26 @@ t_sfc_initialize(VALUE self, VALUE _width, VALUE _height) {
   int height = NUM2INT(_height);
 
   const int initialize = (width > 0 && height > 0);
+
+  SkGraphics::Init();
+  // SkImageInfo imgi = SkImageInfo::Make(width, height, kBGRA_8888_SkColorType, kUnpremul_SkAlphaType);
+  SkImageInfo imgi = SkImageInfo::MakeN32Premul(512, 256);
+  // sk_sp<SkSurface> sk_sfc = SkSurfaces::Raster(imgi);
+  sk_sp<SkSurface> sk_sfc = SkSurfaces::Null(512, 256);
+
+  SkCanvas* sk_canvas = sk_sfc->getCanvas();
+  SkPaint paint;
+  paint.setColor(SK_ColorBLUE);
+  paint.setAntiAlias(true);
+  sk_canvas->drawCircle(128, 128, 100, paint);
+
+  // sk_sp<SkImage> img = sk_sfc->makeImageSnapshot();
+  // SkPixmap pixmap;
+  // if (img->peekPixels(&pixmap)) {
+  //     SkFILEWStream out("circle.png");
+  //     SkEncodeImage(&out, pixmap, SkEncodedImageFormat::kPNG, 100);
+  // }
+
 
   // SDL_Surface *sfc = SDL_CreateRGBSurfaceWithFormat(0,
   //   512, 512, 32, SDL_PIXELFORMAT_BGRA32);
@@ -141,6 +172,7 @@ t_sfc_save_png(VALUE self, VALUE file_name) {
   return Qtrue;
 }
 
+extern "C"
 VALUE
 lao_sfc_create_borrowed(SDL_Surface *sdl_surface, cairo_surface_t *cairo_surface, cairo_t *cairo_ctx) {
   VALUE sfc_obj = t_sfc_allocator(cLayerSurface);
@@ -380,7 +412,7 @@ t_sfc_to_rgb24(VALUE self) {
 
   const unsigned int width = cairo_image_surface_get_width(sfc->cairo_surface);
   const unsigned int height = cairo_image_surface_get_height(sfc->cairo_surface);
-  unsigned char *dest_data = malloc(width * height * 3);
+  unsigned char *dest_data = (unsigned char*)malloc(width * height * 3);
 
   for (unsigned int y = 0; y < height; ++y) {
     for (unsigned int x = 0; x < width; ++x) {
@@ -532,6 +564,7 @@ t_sfc_identity(VALUE self) {
 
 ////////////////////////////////////////////////////////////////////////
 
+extern "C"
 void
 LAO_Surface_Init() {
   cLayerSurface = rb_define_class_under(cLayer, "Surface", rb_cObject);

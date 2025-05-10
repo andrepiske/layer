@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # $:.unshift(File.expand_path("./dopebuild", __dir__))
 # require 'pry'
-# require 'debug'
+require 'debug'
 
 require_relative './dopebuild.rb'
 
@@ -13,12 +13,25 @@ conf.require_lib!('sdl2')
 conf.require_lib!('freetype2')
 conf.require_lib!('cairo')
 
+# To use this:
+# Download prebuilt Skia binaries here: https://github.com/JetBrains/skia-pack/releases
+# e.g. Skia-m132-a00c390e98-1-macos-Debug-arm64.zip
+# then unzip it into under ~/Downloads/_skia
+#
+conf.require_lib_2!('skia', "#{ENV['HOME']}/Downloads/_skia", [
+  ''
+],
+['out/Debug-macos-arm64'],
+[
+  'skia'
+])
+
 # include_video = (ENV['WITH_VIDEO'] == 'true')
 
 conf.build_files = [
-  'font.c',
+  'font.cpp',
   'layer_ext.c',
-  'surface.c',
+  'surface.cpp',
   'window.c',
   'timer.c',
 ]
