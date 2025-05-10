@@ -10,16 +10,34 @@ extern FT_Library s_freetype_lib;
 VALUE cLayerFont;
 
 #define DECLAREFONT(o) \
-  struct LAO_Font *font = (struct LAO_Font*)rb_data_object_get((o))
+  struct LAO_Font *font; \
+  TypedData_Get_Struct((o), struct LAO_Font, &lao_font_datatype, (font));
+
 
 static void
-t_font_gc_mark(struct LAO_Font *font) {
+t_font_gc_mark(void *font) {
 }
 
 static void
-t_font_free(struct LAO_Font *font) {
+t_font_free(void *font) {
   xfree(font);
 }
+
+static size_t
+t_font_data_size(const void *_font) {
+  // const struct Lao_Font *font = (const struct Lao_Font*)_font;
+  return 0;
+}
+
+static const rb_data_type_t lao_font_datatype = {
+  .wrap_struct_name = "Layer::Font",
+  .function = {
+    .dmark = t_font_gc_mark,
+    .dfree = t_font_free,
+    .dsize = t_font_data_size,
+  },
+  .flags = RUBY_TYPED_FREE_IMMEDIATELY
+};
 
 static VALUE
 t_font_allocator(VALUE klass) {
@@ -27,8 +45,12 @@ t_font_allocator(VALUE klass) {
   font->face = 0;
   font->size = 0;
   font->color = 0;
-  return Data_Wrap_Struct(klass, t_font_gc_mark, t_font_free, font);
+
+  return TypedData_Wrap_Struct(klass, &lao_font_datatype, font);
+
+  // return Data_Wrap_Struct(klass, t_font_gc_mark, t_font_free, font);
 }
+
 
 static VALUE
 t_font_initialize(VALUE self, VALUE _file_name, VALUE _size) {
