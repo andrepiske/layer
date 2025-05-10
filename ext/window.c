@@ -15,10 +15,13 @@ static VALUE g_sym_alt;
 static VALUE g_sym_cmd;
 
 #define DECLAREWND(o) \
-  struct LAO_Window *wnd = (struct LAO_Window*)rb_data_object_get((o))
+  struct LAO_Window *wnd; \
+  TypedData_Get_Struct((o), struct LAO_Window, &lao_window_datatype, (wnd));
 
 static void
-t_wnd_gc_mark(struct LAO_Window *wnd) {
+t_wnd_gc_mark(void *_wnd) {
+  struct LAO_Window *wnd = (struct LAO_Window*)_wnd;
+
   if (wnd->ruby_keyboard_handler) {
     rb_gc_mark(wnd->ruby_keyboard_handler);
   }
@@ -33,7 +36,9 @@ t_wnd_gc_mark(struct LAO_Window *wnd) {
 }
 
 static void
-t_wnd_free(struct LAO_Window *wnd) {
+t_wnd_free(void *_wnd) {
+  struct LAO_Window *wnd = (struct LAO_Window*)_wnd;
+
   if (wnd->sdl_surface) {
     SDL_FreeSurface(wnd->sdl_surface);
     wnd->sdl_surface = 0;
@@ -53,11 +58,28 @@ t_wnd_free(struct LAO_Window *wnd) {
   xfree(wnd);
 }
 
+static size_t
+t_wnd_data_size(const void *_wnd) {
+  return 0;
+}
+
+static const rb_data_type_t lao_window_datatype = {
+  .wrap_struct_name = "Layer::Window",
+  .function = {
+    .dmark = t_wnd_gc_mark,
+    .dfree = t_wnd_free,
+    .dsize = t_wnd_data_size,
+  },
+  .flags = RUBY_TYPED_FREE_IMMEDIATELY
+};
+
+
 static VALUE
 t_wnd_allocator(VALUE klass) {
   struct LAO_Window *wnd = (struct LAO_Window*)xmalloc(sizeof(struct LAO_Window));
   memset(wnd, 0, sizeof(struct LAO_Window));
-  return Data_Wrap_Struct(klass, t_wnd_gc_mark, t_wnd_free, wnd);
+
+  return TypedData_Wrap_Struct(klass, &lao_window_datatype, wnd);
 }
 
 void
