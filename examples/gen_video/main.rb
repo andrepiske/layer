@@ -79,7 +79,7 @@ class GenApp
     @particles.each do |par|
       @sf.identity
       @sf.translate(par[:x] + 32, par[:y] + 32)
-      @sf.rotate(par[:life] * Math::PI * 2.0)
+      # @sf.rotate(par[:life] * Math::PI * 2.0)
       @sf.blit_surface(par[:sprite], -32, -32)
     end
     @sf.identity

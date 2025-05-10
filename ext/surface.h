@@ -14,8 +14,16 @@ struct LAO_Surface {
   int borrowed;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 VALUE lao_sfc_create_borrowed(SDL_Surface *sdl_surface, cairo_surface_t *cairo_surface, cairo_t *cairo_ctx);
 
 struct LAO_Surface *lao_sfc_from_value(VALUE v);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

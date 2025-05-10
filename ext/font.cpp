@@ -254,7 +254,11 @@ static VALUE
 t_font_size_set(VALUE self, VALUE _size) {
   DECLAREFONT(self);
   font->size = (float)NUM2DBL(_size);
-  FT_Set_Char_Size(font->face, 0, (int)(font->size * 64.0), 128, 128);
+  FT_Set_Char_Size((FT_Face)font->face,
+    (FT_F26Dot6)0,
+    (FT_F26Dot6)(font->size * 64.0),
+    (FT_UInt)128,
+    (FT_UInt)128);
   return Qnil;
 }
 
@@ -277,6 +281,7 @@ static VALUE t_font__color_set(VALUE self, VALUE _value) {
 
 ////////////////////////////////////////////////////////////////////////
 
+extern "C"
 void
 LAO_Font_Init() {
   cLayerFont = rb_define_class_under(cLayer, "Font", rb_cObject);
